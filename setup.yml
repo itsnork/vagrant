@@ -1,5 +1,5 @@
 ---
-- hosts: testdev
+- hosts: all
   remote_user: vagrant
   sudo: yes
   vars:
@@ -35,11 +35,39 @@
         owner=www-data
         group=www-data
 
-    - name: Create HTML file
-      copy:
-        src=index.php dest={{ doc_root }}/index.php
-        owner=www-data
-        group=www-data mode=0644
+
+    - composer:
+        command: require
+        arguments: laravel/installer
+        working_dir: "{{ doc_root }}"
+        prefer_dist: yes
+
+    - composer:
+        command: create-project
+        arguments: --prefer-dist laravel/laravel blog
+        working_dir: "{{ doc_root }}"
+        prefer_dist: yes
+
+    - name: Make my directory tree readable
+      file:
+         path: "{{ doc_root }}/blog/storage"
+         mode: u=rwX,g=rwX,o=rwX
+         recurse: yes
+
+    - name: Make my directory tree readable
+      file:
+         path: "{{ doc_root }}/blog/bootstrap/cache"
+         mode: u=rwX,g=rwX,o=rwX
+         recurse: yes
+
+    - name: Move .env
+      command: mv "{{ doc_root }}/blog/.env.example" "{{ doc_root }}/blog/.env"
+
+
+    - name: Generate key
+      shell: php artisan key:generate
+      args:
+         chdir: "{{ doc_root }}/blog"
 
     - name: Delete default nginx vhost
       file:

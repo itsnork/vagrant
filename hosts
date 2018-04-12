@@ -1,4 +1,4 @@
-[dev-server]
+[dev-servervs]
 testdev
 
 [all:vars]
