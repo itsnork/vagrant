@@ -1,0 +1,137 @@
+---
+- hosts: testdev
+  remote_user: vagrant
+  sudo: yes
+  vars:
+    doc_root: /var/www/project
+    nginx_sites: /etc/nginx/sites-available
+    conf_file: testdev.com
+  tasks:
+    - name: Install unzip
+      apt: pkg=unzip state=latest update_cache=yes
+
+    - name: Install MySQL client, server and related libraries
+      apt: pkg={{ item }} state=latest
+      with_items:
+        - mysql-client
+        - mysql-server
+        - python-mysqldb
+
+    - name: Install PHP and its modules
+      apt: pkg={{ item }} state=latest
+      with_items:
+        - php-cli
+        - php-curl
+        - php-gd
+        - php-imagick
+        - php-mysql
+        - php-xmlrpc
+        - php-xdebug
+
+    - name: Create custom document root
+      file:
+        path={{ doc_root }}
+        state=directory
+        owner=www-data
+        group=www-data
+
+    - name: Create HTML file
+      copy:
+        src=index.php dest={{ doc_root }}/index.php
+        owner=www-data
+        group=www-data mode=0644
+
+    - name: Delete default nginx vhost
+      file:
+        path={{ nginx_sites }}/default
+        state=absent
+
+    - name: Delete default nginx vhost symlink
+      file: path=/etc/nginx/sites-enabled/default state=absent
+
+    - name: Setup nginx vhost
+      template:
+        src=nginx.tpl
+        dest={{ nginx_sites }}/{{ conf_file }}.conf
+
+    - name: Create symlink nginx vhost
+      file:
+        src={{ nginx_sites }}/{{ conf_file }}.conf
+        dest=/etc/nginx/sites-enabled/{{ conf_file }}.conf
+        state=link
+      notify: restart nginx
+  handlers:
+    - name: restart nginx
+      service:
+        name=nginx
+        state=restarted
+
+    - name: Start MySQL service
+      service:
+        name: "mysql"
+        state: started
+        enabled: yes
+
+    - name: Setup MySQL root password
+      mysql_user:
+        name: "root"
+        password: "mysql"
+        host: "{{ item }}"
+        state: present
+      with_items:
+        - "{{ ansible_hostname }}"
+        - 127.0.0.1
+        - ::1
+        - localhost
+
+    - name: Setup MySQL creds for root user
+      template:
+        src: "{{ mysqlTemplatePath }}"
+        dest: "/root/.my.cnf"
+        owner: "root"
+        mode: 0600
+
+    - name: Delete blank MySQL users
+      mysql_user:
+        name: ""
+        host: "{{ item }}"
+        state: absent
+      with_items:
+        - "{{ ansible_hostname }}"
+        - 127.0.0.1
+        - ::1
+        - localhost
+
+    - name: Drop MySQL test database
+      mysql_db: 
+        name: test
+        state: absent
+
+    - name: Setup empty database for WordPress
+      mysql_db:
+        name: "wordpress"
+        encoding: "utf8"
+        collation: "utf8_unicode_ci"
+        state: "present"
+        login_user: "root"
+        login_password: "mysql"
+
+    - name: Setup MySQL user for WordPress
+      mysql_user:
+        name: "user_wp"
+        password: "wordpress"
+        host: "localhost"
+        priv: "wordpress.*:ALL"
+        state: "present"
+
+    - name: Put "vagrant" user in www-data group
+      user:
+        name: "vagrant"
+        groups: "www-data"
+        append: yes
+
+    - name: Ensure Nginx is running
+      service: 
+        name: nginx 
+        state: restarted 
+        enabled: yes
